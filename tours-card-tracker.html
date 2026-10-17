@@ -1,0 +1,1108 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>ツアマス カード所持管理</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
+<style>
+/* Layout: 画面上部に固定の所持率メーター、その下に公式と同じ並びの絞り込み(シリーズ→タブ→チェック)、続いて40枚ずつのカードグリッド。カード右上に所持チェック。 */
+:root {
+  --bg: #f2f3f8;
+  --surface: #ffffff;
+  --surface-2: #eaecf4;
+  --ink: #1a1a2c;
+  --muted: #63617a;
+  --line: #d8d9e6;
+  --accent: #c4125f;
+  --accent-soft: #fbe3ee;
+  --accent-ink: #ffffff;
+  --own: #12885a;
+  --own-soft: #d9f3e6;
+  --danger: #b3261e;
+  --g-a: #d93d8c;
+  --g-b: #2f78c4;
+  --g-c: #d9821a;
+  --g-d: #7d4fd0;
+  --shadow: 0 1px 2px rgba(20, 18, 40, .08), 0 6px 18px rgba(20, 18, 40, .06);
+  --font-ui: 'Zen Kaku Gothic New', 'Hiragino Kaku Gothic ProN', 'Yu Gothic UI', 'Meiryo', system-ui, sans-serif;
+  --font-num: 'Barlow Condensed', 'Arial Narrow', 'Hiragino Kaku Gothic ProN', sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #13121c; --surface: #1d1c2a; --surface-2: #28273a; --ink: #eceaf6; --muted: #a09eb8; --line: #34334a;
+    --accent: #ff7bb0; --accent-soft: #3a2030; --accent-ink: #2a0b19;
+    --own: #3ccf8e; --own-soft: #173a2b; --danger: #ff8a80;
+    --g-a: #f07ab5; --g-b: #6aaaf0; --g-c: #f0a64a; --g-d: #a98af0;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 6px 18px rgba(0, 0, 0, .3);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #13121c; --surface: #1d1c2a; --surface-2: #28273a; --ink: #eceaf6; --muted: #a09eb8; --line: #34334a;
+  --accent: #ff7bb0; --accent-soft: #3a2030; --accent-ink: #2a0b19;
+  --own: #3ccf8e; --own-soft: #173a2b; --danger: #ff8a80;
+  --g-a: #f07ab5; --g-b: #6aaaf0; --g-c: #f0a64a; --g-d: #a98af0;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 6px 18px rgba(0, 0, 0, .3);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 400 15px/1.6 var(--font-ui);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0 max(40px, env(safe-area-inset-bottom, 0px));
+}
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+[hidden] { display: none !important; }
+.wrap { max-width: 1180px; margin: 0 auto; }
+
+/* ---- header ---- */
+.top {
+  position: sticky; top: 0; z-index: 20;
+  margin-inline: calc(-1 * max(16px, env(safe-area-inset-left, 0px)));
+  padding: max(10px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) 12px max(16px, env(safe-area-inset-left, 0px));
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+.top-inner { max-width: 1180px; margin: 0 auto; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px 24px; align-items: center; }
+h1 { margin: 0; font-size: 17px; font-weight: 700; line-height: 1.25; letter-spacing: .02em; }
+h1 small { display: block; font-size: 11px; font-weight: 500; color: var(--muted); letter-spacing: .08em; }
+.meter { min-width: 0; }
+.meter-num { display: flex; align-items: baseline; gap: 6px; font-variant-numeric: tabular-nums; flex-wrap: wrap; }
+.meter-num b { font: 600 34px/1 var(--font-num); color: var(--own); }
+.meter-num .slash, .meter-num .total { font: 600 20px/1 var(--font-num); color: var(--muted); }
+.meter-num .pct { margin-left: auto; font: 600 20px/1 var(--font-num); }
+.bar { height: 8px; border-radius: 99px; background: var(--surface-2); overflow: hidden; margin-top: 6px; }
+.bar > span { display: block; height: 100%; width: 0; background: var(--own); border-radius: inherit; transition: width .25s ease; }
+.top-actions { display: flex; gap: 8px; }
+.btn {
+  border: 1px solid var(--line); background: var(--surface); border-radius: 8px;
+  padding: 7px 14px; font-weight: 500; font-size: 14px; line-height: 1.3; white-space: nowrap;
+}
+.btn:hover { border-color: var(--accent); color: var(--accent); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; }
+.btn.primary:hover { filter: brightness(1.06); color: var(--accent-ink); }
+.btn.small { padding: 5px 10px; font-size: 13px; }
+a.btn { text-decoration: none; display: inline-block; }
+.btn.danger { color: var(--danger); border-color: var(--danger); }
+.btn[disabled] { opacity: .45; cursor: not-allowed; }
+
+/* ---- notes ---- */
+.note { margin: 14px 0 0; padding: 10px 14px; border-radius: 10px; background: var(--accent-soft); font-size: 14px; display: flex; gap: 10px 14px; align-items: center; flex-wrap: wrap; }
+.note p { margin: 0; flex: 1 1 260px; min-width: 0; }
+.note.warn { background: var(--surface-2); }
+
+/* ---- filters ---- */
+.filters { margin-top: 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px; display: grid; gap: 12px; }
+.filter-row { display: flex; gap: 10px 12px; flex-wrap: wrap; align-items: center; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+.seg button { border: 0; background: var(--surface); padding: 7px 13px; font-size: 14px; border-right: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+.seg button:last-child { border-right: 0; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); font-weight: 700; }
+.seg button span { opacity: .75; font-size: 12px; margin-left: 4px; }
+.field { border: 1px solid var(--line); background: var(--surface); border-radius: 9px; padding: 7px 10px; min-width: 0; }
+input.field { flex: 1 1 180px; max-width: 320px; }
+select.field { max-width: 100%; }
+.tabs { display: flex; gap: 2px; flex-wrap: wrap; border-bottom: 1px solid var(--line); }
+.tabs button { border: 0; background: none; padding: 8px 14px; font-weight: 500; border-bottom: 3px solid transparent; margin-bottom: -1px; color: var(--muted); }
+.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); font-weight: 700; }
+.tabs button[disabled] { opacity: .4; cursor: not-allowed; }
+.tabs .count { display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 5px; border-radius: 99px; background: var(--accent); color: var(--accent-ink); font-size: 11px; line-height: 18px; text-align: center; }
+.brands { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+.brands button { border: 1px solid var(--line); background: var(--surface); border-radius: 99px; padding: 3px 12px; font-size: 13px; }
+.brands button[aria-pressed="true"] { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { position: relative; }
+.chip input { position: absolute; opacity: 0; inset: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+.chip span { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--line); border-radius: 8px; padding: 5px 12px; font-size: 14px; background: var(--surface); }
+.chip input:checked + span { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; }
+.chip input:focus-visible + span { outline: 3px solid var(--accent); outline-offset: 2px; }
+.gdot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--gc, var(--line)); flex: none; }
+.chip input:checked + span .gdot { box-shadow: 0 0 0 2px var(--accent-ink); }
+[data-g="a"], .tile[data-genre="a"] { --gc: var(--g-a); }
+[data-g="b"], .tile[data-genre="b"] { --gc: var(--g-b); }
+[data-g="c"], .tile[data-genre="c"] { --gc: var(--g-c); }
+[data-g="d"], .tile[data-genre="d"] { --gc: var(--g-d); }
+.empty-tab { margin: 0; color: var(--muted); font-size: 14px; }
+
+/* ---- results ---- */
+.result { margin: 18px 0 10px; display: flex; gap: 8px 14px; flex-wrap: wrap; align-items: center; }
+.result p { margin: 0; font-variant-numeric: tabular-nums; flex: 1 1 220px; min-width: 0; }
+.result p b { font: 600 22px/1 var(--font-num); margin-right: 3px; }
+.result .bulk { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ---- grid ---- */
+.grid { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px 12px; grid-template-columns: repeat(auto-fill, minmax(108px, 1fr)); }
+@media (min-width: 640px) { .grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 18px 14px; } }
+.tile { position: relative; min-width: 0; }
+.thumb {
+  position: relative; display: block; width: 100%; aspect-ratio: 5 / 7; padding: 0; border: 0;
+  border-radius: 10px; overflow: hidden; background: var(--surface-2); box-shadow: var(--shadow);
+}
+.thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: transparent; transition: filter .15s, opacity .15s; }
+.ph { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 8px; text-align: center; color: var(--muted); font-size: 13px; line-height: 1.35; border-top: 4px solid var(--gc, var(--line)); }
+.ph b { font: 600 28px/1 var(--font-num); color: var(--ink); letter-spacing: .02em; }
+.thumb.loaded .ph { visibility: hidden; }
+.thumb::after { content: ""; position: absolute; inset: 0; border-radius: inherit; border: 3px solid transparent; pointer-events: none; }
+.tile.is-owned .thumb::after { border-color: var(--own); }
+.tile:not(.is-owned) .thumb img { filter: grayscale(.8) brightness(.92); opacity: .62; }
+.tile:not(.is-owned) .thumb:hover img { filter: none; opacity: 1; }
+.own { position: absolute; top: 4px; right: 4px; width: 36px; height: 36px; display: grid; place-items: center; }
+.own input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.own .box { width: 26px; height: 26px; border-radius: 7px; background: rgba(255, 255, 255, .92); border: 2px solid #6c6a82; box-shadow: 0 1px 4px rgba(0, 0, 0, .35); position: relative; pointer-events: none; }
+.own input:checked + .box { background: var(--own); border-color: #fff; }
+.own input:checked + .box::after { content: ""; position: absolute; left: 7px; top: 2px; width: 6px; height: 12px; border: solid #fff; border-width: 0 3px 3px 0; transform: rotate(45deg); }
+.own input:focus-visible + .box { outline: 3px solid var(--accent); outline-offset: 2px; }
+.cap { margin: 6px 2px 0; font-size: 12.5px; line-height: 1.35; display: flex; gap: 6px; align-items: baseline; min-width: 0; }
+.cap .cid { font: 600 14px/1 var(--font-num); color: var(--muted); flex: none; }
+.cap .nm { min-width: 0; overflow-wrap: anywhere; }
+.empty { grid-column: 1 / -1; text-align: center; color: var(--muted); padding: 40px 0; }
+
+/* ---- pager ---- */
+.pager { margin: 26px 0 0; display: flex; justify-content: center; gap: 6px; flex-wrap: wrap; }
+.pager button { min-width: 38px; height: 38px; padding: 0 10px; border: 1px solid var(--line); background: var(--surface); border-radius: 8px; font-variant-numeric: tabular-nums; }
+.pager button[aria-current="page"] { background: var(--ink); color: var(--surface); border-color: var(--ink); font-weight: 700; }
+.pager button[disabled] { opacity: .4; cursor: not-allowed; }
+.pager .dots { align-self: center; color: var(--muted); padding: 0 2px; }
+
+/* ---- dialogs ---- */
+dialog { width: min(720px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); border: 1px solid var(--line); border-radius: 14px; background: var(--surface); color: var(--ink); padding: 0; box-shadow: 0 20px 60px rgba(0, 0, 0, .35); overflow: auto; }
+dialog::backdrop { background: rgba(10, 8, 24, .55); }
+.dlg { padding: 18px 20px 20px; display: grid; gap: 14px; }
+.dlg-head { display: flex; justify-content: space-between; gap: 12px; align-items: start; }
+.dlg-head h2 { margin: 0; font-size: 18px; line-height: 1.35; min-width: 0; overflow-wrap: anywhere; }
+.dlg-head h2 small { display: block; font: 600 14px/1.2 var(--font-num); color: var(--muted); letter-spacing: .04em; }
+.x { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; width: 34px; height: 34px; flex: none; font-size: 18px; line-height: 1; }
+.dlg h3 { margin: 0; font-size: 15px; }
+.dlg p { margin: 0; }
+.dlg .hint { color: var(--muted); font-size: 13.5px; }
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.pair figure { margin: 0; text-align: center; min-width: 0; }
+.pair .fig { aspect-ratio: 5 / 7; border-radius: 10px; background: var(--surface-2); overflow: hidden; display: grid; place-items: center; color: var(--muted); font-size: 13px; }
+.pair .fig img { width: 100%; height: 100%; object-fit: contain; }
+.pair figcaption { font-size: 12px; color: var(--muted); margin-top: 4px; }
+.meta-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.tag { display: inline-flex; gap: 6px; align-items: center; padding: 2px 10px; border-radius: 6px; background: var(--surface-2); font-size: 13px; }
+.own-toggle { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; font-weight: 700; cursor: pointer; }
+.own-toggle input { width: 22px; height: 22px; accent-color: var(--own); margin: 0; }
+.dlg-nav { display: flex; justify-content: space-between; gap: 8px; }
+.sect { display: grid; gap: 8px; padding-top: 14px; border-top: 1px solid var(--line); }
+.sect:first-of-type { border-top: 0; padding-top: 0; }
+textarea.field { width: 100%; min-height: 84px; resize: vertical; font: 12.5px/1.45 ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace; word-break: break-all; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.radios { display: flex; gap: 14px; flex-wrap: wrap; font-size: 14px; }
+.radios label { display: flex; gap: 6px; align-items: center; }
+ol.steps { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; font-size: 14.5px; }
+details summary { cursor: pointer; font-size: 13.5px; color: var(--muted); }
+.msg { font-size: 14px; padding: 8px 12px; border-radius: 8px; background: var(--surface-2); }
+.msg.err { background: var(--accent-soft); color: var(--danger); }
+.msg.ok { background: var(--own-soft); color: var(--own); }
+
+.toast { position: fixed; left: 50%; bottom: max(24px, env(safe-area-inset-bottom, 0px)); transform: translate(-50%, 20px); background: var(--ink); color: var(--surface); padding: 10px 18px; border-radius: 10px; font-size: 14px; opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; z-index: 100; max-width: calc(100vw - 32px); }
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+@media (max-width: 640px) {
+  .top-inner { grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; }
+  h1 { font-size: 15px; white-space: nowrap; }
+  h1 small { display: none; }
+  .top { padding-bottom: 10px; }
+  .meter { grid-column: 1 / -1; grid-row: 2; }
+  .meter-num b { font-size: 30px; }
+  .dlg { padding: 16px; }
+  .pair { gap: 8px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="top-inner">
+    <h1>ツアマス カード所持管理<small>THE IDOLM@STER TOURS</small></h1>
+    <div class="meter" aria-live="polite">
+      <div class="meter-num"><b id="ownedN">0</b><span class="slash">/</span><span class="total" id="totalN">0</span><span class="pct" id="pct">0.0%</span></div>
+      <div class="bar" role="progressbar" aria-label="所持率" aria-valuemin="0" aria-valuemax="100" id="barBox"><span id="barFill"></span></div>
+    </div>
+    <div class="top-actions">
+      <button class="btn" id="btnData" type="button" title="カードデータの取り込み">データ</button>
+      <button class="btn primary" id="btnSync" type="button" title="端末間の同期">同期</button>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="note" id="noteSample" hidden>
+    <p>いまはサンプル表示です(公式カードリスト1ページ目の40枚、画像なし)。全カードを取り込むと、画像つきの一覧になります。</p>
+    <button class="btn small primary" type="button" id="noteImport">全カードを取り込む</button>
+  </div>
+  <div class="note warn" id="noteStorage" hidden><p>このブラウザでは保存できません。プライベートブラウズや、サイトデータの保存をブロックする設定になっていないか確認してください。このままだと、ページを閉じるとチェックが消えます。</p></div>
+
+  <section class="filters" aria-label="絞り込み">
+    <div class="filter-row">
+      <div class="seg" role="group" aria-label="所持の状態" id="seg">
+        <button type="button" data-status="all" aria-pressed="true">すべて<span id="cAll"></span></button>
+        <button type="button" data-status="own" aria-pressed="false">所持<span id="cOwn"></span></button>
+        <button type="button" data-status="miss" aria-pressed="false">未所持<span id="cMiss"></span></button>
+      </div>
+      <label class="sr" for="seriesSel" style="position:absolute;left:-9999px">シリーズ</label>
+      <select class="field" id="seriesSel"></select>
+      <input class="field" id="q" type="search" placeholder="名前・番号で検索" autocomplete="off" aria-label="名前・番号で検索">
+      <button class="btn small" type="button" id="btnReset">絞り込みをリセット</button>
+    </div>
+    <div>
+      <div class="tabs" role="tablist" id="tabs">
+        <button role="tab" type="button" data-tab="rarity" id="tab-rarity">レアリティ</button>
+        <button role="tab" type="button" data-tab="type" id="tab-type">種類</button>
+        <button role="tab" type="button" data-tab="genre" id="tab-genre">ジャンル</button>
+        <button role="tab" type="button" data-tab="idol" id="tab-idol">アイドル</button>
+      </div>
+      <div id="panel" role="tabpanel" style="padding-top:12px"></div>
+    </div>
+  </section>
+
+  <div class="result">
+    <p id="resultText"></p>
+    <select class="field" id="sortSel" aria-label="並び順">
+      <option value="official">公式の並び順</option>
+      <option value="asc">番号が小さい順</option>
+      <option value="desc">番号が大きい順</option>
+    </select>
+    <div class="bulk">
+      <button class="btn small" type="button" id="bulkOn">表示中をすべて所持にする</button>
+      <button class="btn small" type="button" id="bulkOff">表示中の所持を外す</button>
+    </div>
+  </div>
+
+  <ul class="grid" id="grid"></ul>
+  <nav class="pager" id="pager" aria-label="ページ送り"></nav>
+</main>
+
+<!-- カード詳細 -->
+<dialog id="dlgCard" aria-labelledby="cardTitle">
+  <div class="dlg">
+    <div class="dlg-head">
+      <h2 id="cardTitle"></h2>
+      <button class="x" type="button" data-close aria-label="閉じる">×</button>
+    </div>
+    <div class="pair">
+      <figure><div class="fig" id="figFront"></div><figcaption>表面</figcaption></figure>
+      <figure><div class="fig" id="figBack"></div><figcaption>裏面</figcaption></figure>
+    </div>
+    <div class="meta-chips" id="cardMeta"></div>
+    <label class="own-toggle"><input type="checkbox" id="dlgOwn"> このカードを所持している</label>
+    <div class="dlg-nav">
+      <button class="btn" type="button" id="dlgPrev">← 前のカード</button>
+      <button class="btn" type="button" id="dlgNext">次のカード →</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- 同期 -->
+<dialog id="dlgSync" aria-labelledby="syncTitle">
+  <div class="dlg">
+    <div class="dlg-head"><h2 id="syncTitle">端末間の同期</h2><button class="x" type="button" data-close aria-label="閉じる">×</button></div>
+    <p class="hint">チェック状態はこのブラウザの中にだけ保存されます。別の端末へは、コードを書き出して、もう一方の端末で読み込んでください。アカウントや通信は使いません。</p>
+
+    <div class="sect">
+      <h3>書き出す</h3>
+      <div class="row">
+        <button class="btn primary" type="button" id="mkOwned">所持コードを作る</button>
+        <button class="btn" type="button" id="mkData">データ込みコードを作る</button>
+      </div>
+      <p class="hint">所持コードは所持カードの番号だけで短く、普段の同期はこちらです。データ込みコードはカード一覧(画像のURLを含む)も入っていて、スマホなど新しい端末の最初の設定に使います。</p>
+      <div id="outBox" hidden>
+        <textarea class="field" id="outCode" readonly rows="4" aria-label="書き出したコード"></textarea>
+        <div class="row" style="margin-top:8px"><button class="btn small" type="button" id="copyOut">コピー</button><span class="hint" id="outInfo"></span></div>
+      </div>
+    </div>
+
+    <div class="sect">
+      <h3>読み込む</h3>
+      <textarea class="field" id="inCode" rows="4" placeholder="IMT1. から始まるコードを貼り付け" aria-label="読み込むコード"></textarea>
+      <div class="radios" role="radiogroup" aria-label="読み込み方法">
+        <label><input type="radio" name="mode" value="merge" checked> いまの所持に追加する</label>
+        <label><input type="radio" name="mode" value="replace"> コードの内容に置き換える</label>
+      </div>
+      <div class="row"><button class="btn primary" type="button" id="checkIn">コードを確認</button></div>
+      <div id="inMsg" hidden></div>
+      <div class="row" id="applyRow" hidden><button class="btn primary" type="button" id="applyIn">この内容で読み込む</button></div>
+    </div>
+  </div>
+</dialog>
+
+<!-- カードデータ取込 -->
+<dialog id="dlgData" aria-labelledby="dataTitle">
+  <div class="dlg">
+    <div class="dlg-head"><h2 id="dataTitle">カードデータの取り込み</h2><button class="x" type="button" data-close aria-label="閉じる">×</button></div>
+    <p class="msg" id="dataState"></p>
+    <ol class="steps">
+      <li>パソコンのブラウザで、公式のカードリストのページを開きます。</li>
+      <li>次の「ブックマークレット」か「コンソール」のどちらかで、取込スクリプトを動かします。<strong>画面右下に進捗が出て、1〜2分ほどで終わります。</strong></li>
+      <li>終わると JSON ファイル(tours-cards.json)がダウンロードされます。下の「JSONファイルを選ぶ」で選ぶと取り込めます。</li>
+    </ol>
+    <div class="sect">
+      <h3>方法A: ブックマークレット(貼り付け不要・おすすめ)</h3>
+      <ol class="steps">
+        <li>ブックマークバーを表示します(Chromeは Ctrl+Shift+B、Macは ⌘+Shift+B)。</li>
+        <li>下の「ツアマス取込」ボタンを、<strong>クリックではなくドラッグして</strong>ブックマークバーに落とします: <a class="btn small primary" id="bmLink" href="#" draggable="true">ツアマス取込</a></li>
+        <li>公式のカードリストのページで、登録したブックマーク「ツアマス取込」をクリックします。</li>
+      </ol>
+    </div>
+    <div class="sect">
+      <h3>方法B: コンソールに貼り付ける</h3>
+      <ol class="steps">
+        <li><button class="btn small" type="button" id="copyScript">取込スクリプトをコピー</button> を押します。</li>
+        <li>公式ページで F12 を押し、「コンソール」タブを開きます。</li>
+        <li>最初に <b>allow pasting</b> と入力して Enter を押します。これを入れないと、ChromeやFirefoxは貼り付けを受け付けません。</li>
+        <li>スクリプトを貼り付けて Enter を押します。</li>
+      </ol>
+      <details><summary>コピーできないとき・スクリプトの中身</summary>
+        <p class="hint" style="margin:8px 0">下の欄の全体を選んで(Ctrl+A)コピーしてください。公式ページ上のカード情報を読み取って、JSONにするだけのスクリプトです。</p>
+        <textarea class="field" id="scriptView" readonly rows="6" aria-label="取込スクリプト"></textarea>
+      </details>
+    </div>
+    <textarea class="field" id="dataIn" rows="5" placeholder="JSONをコピーできた場合は、ここに貼り付けても取り込めます" aria-label="カードデータのJSON"></textarea>
+    <div class="row">
+      <button class="btn primary" type="button" id="doImport">取り込む</button>
+      <label class="btn small" for="dataFile" style="cursor:pointer">JSONファイルを選ぶ</label>
+      <input type="file" id="dataFile" accept=".json,application/json" hidden>
+    </div>
+    <div id="dataMsg" hidden></div>
+    <p class="hint">取り込んでも、いまのチェックは消えません。画像は公式サイトのものを表示するだけで、このアプリには保存しません。</p>
+  </div>
+</dialog>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script type="text/plain" id="extractSrc">(async () => {
+  // ツアマス カードリスト取込スクリプト
+  // 公式カードリストのページで実行すると、全カードの情報をJSONにして
+  // クリップボードへコピーします(ファイルのダウンロードも行います)。
+  const WAIT = 1500;   // ページ切替の最大待ち時間(ms)
+  const SETTLE = 450;  // 絞り込み後の待ち時間(ms)
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+  // 画面右下の進捗表示(コンソールを開かなくても状況が分かる。クリックで閉じる)
+  const hud = document.createElement('div');
+  hud.style.cssText = 'position:fixed;right:12px;bottom:12px;z-index:2147483647;max-width:320px;padding:10px 14px;border-radius:10px;background:#1a1a2c;color:#fff;font:13px/1.5 sans-serif;box-shadow:0 4px 16px rgba(0,0,0,.4);cursor:pointer';
+  hud.title = 'クリックで閉じる';
+  hud.onclick = () => hud.remove();
+  document.body.appendChild(hud);
+  const log = (...a) => { console.log('[所持管理]', ...a); hud.textContent = '所持管理: ' + a.join(' '); };
+
+  if (!$('#cardList')) {
+    log('カードリストのページ(…/idolmaster-tours/cardlist/)で実行してください。');
+    return;
+  }
+
+  const readVisible = () => $$('#cardList > li').map((li) => {
+    const a = $('a.cpop', li);
+    if (!a) return null;
+    const m = /popup_(\w+)/.exec(a.getAttribute('href') || '');
+    if (!m) return null;
+    const thumb = $('img', a);
+    const pop = $('.cpop-main', li);
+    const imgs = pop ? $$('img', pop) : [];
+    const gb = pop && $('.genreBox', pop);
+    const gm = gb && /genre-([a-z])/.exec(gb.className);
+    return {
+      id: m[1],
+      name: thumb ? (thumb.getAttribute('alt') || '').trim() : '',
+      img: thumb ? (thumb.currentSrc || thumb.src) : '',
+      back: imgs[1] ? imgs[1].src : '',
+      yoko: !!(pop && $('.yokolist', pop)),
+      genre: gm ? gm[1] : '',
+    };
+  }).filter(Boolean);
+
+  const sig = () => $$('#cardList > li a.cpop').map((a) => a.getAttribute('href')).join('|');
+  const waitChange = async (prev) => {
+    const t = Date.now();
+    while (Date.now() - t < WAIT) {
+      await sleep(80);
+      if (sig() !== prev) return true;
+    }
+    return false;
+  };
+
+  // 現在の絞り込み結果を、全ページ分たどって onCards に渡す
+  const walk = async (onCards) => {
+    const first = $$('.pagination .page-item.page a').find((a) => a.textContent.trim() === '1');
+    if (first) { first.click(); await sleep(250); }
+    for (let guard = 0; guard < 300; guard++) {
+      onCards(readVisible());
+      const next = $('.pagination .page-item.next a');
+      if (!next) break;
+      const prev = sig();
+      next.click();
+      if (!(await waitChange(prev))) break;
+    }
+  };
+
+  const fire = (el, type) => el.dispatchEvent(new Event(type, { bubbles: true }));
+  const select = $('#seriesFilter');
+  const resetFilters = () => {
+    $$('section.filters input[type=checkbox]').forEach((c) => { if (c.checked) { c.checked = false; fire(c, 'change'); } });
+    if (select && select.value !== 'all') { select.value = 'all'; fire(select, 'change'); }
+  };
+  const runSearch = async () => {
+    const btn = $('#searchButton');
+    if (btn) btn.click();
+    await sleep(SETTLE);
+  };
+
+  // 1. 全カード
+  log('全カードを読み込んでいます…');
+  resetFilters();
+  const showAll = $('#showAllButton');
+  if (showAll) showAll.click();
+  await sleep(SETTLE);
+  const master = new Map();
+  await walk((cards) => cards.forEach((c) => { if (!master.has(c.id)) master.set(c.id, c); }));
+  log(master.size + '枚を取得');
+  if (!master.size) { log('カードを取得できませんでした。ページを開き直してから、もう一度実行してください。'); return; }
+
+  // 2. 絞り込みごとにたどり、シリーズ・レアリティ・種類を付与する
+  const labels = { series: {}, rarity: {}, type: {}, genre: {} };
+  const passes = [];
+  if (select) {
+    $$('option', select).forEach((o) => {
+      if (o.value && o.value !== 'all') {
+        const code = o.value.replace(/^series-/, '');
+        labels.series[code] = o.textContent.trim();
+        passes.push({ key: 'series', code, setup: () => { select.value = o.value; fire(select, 'change'); } });
+      }
+    });
+  }
+  [['rarity', '#tab-rarity'], ['type', '#tab-type']].forEach(([key, sel]) => {
+    $$(sel + ' input[type=checkbox]').forEach((cb) => {
+      const code = cb.value.replace(new RegExp('^' + key + '-'), '');
+      const img = $('img', cb.nextElementSibling || document);
+      labels[key][code] = (img && img.getAttribute('alt')) || code;
+      passes.push({ key, code, setup: () => { cb.checked = true; fire(cb, 'change'); } });
+    });
+  });
+
+  let n = 0;
+  for (const p of passes) {
+    n++;
+    resetFilters();
+    p.setup();
+    await runSearch();
+    const ids = new Set();
+    await walk((cards) => cards.forEach((c) => ids.add(c.id)));
+    if (ids.size >= master.size) {
+      log(`(${n}/${passes.length}) ${p.key}=${p.code}: 絞り込みが効かなかったためスキップ`);
+      continue;
+    }
+    ids.forEach((id) => { const c = master.get(id); if (c) c[p.key] = p.code; });
+    log(`(${n}/${passes.length}) ${p.key}=${p.code}: ${ids.size}枚`);
+  }
+  resetFilters();
+  await runSearch();
+
+  // 3. 出力
+  const out = {
+    v: 1,
+    scraped: new Date().toISOString(),
+    source: location.href,
+    labels,
+    cards: Array.from(master.values()),
+  };
+  const json = JSON.stringify(out);
+  let copied = false;
+  try { copy(json); copied = true; } catch (e) { /* console以外では未定義 */ }
+  if (!copied) { try { await navigator.clipboard.writeText(json); copied = true; } catch (e) { /* 権限なし */ } }
+  try {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+    a.download = 'tours-cards.json';
+    a.click();
+  } catch (e) { /* ダウンロード不可 */ }
+  window.__toursCards = out;
+  log(`完了: ${out.cards.length}枚。` + (copied ? 'クリップボードにコピーしました。' : 'コピーはできませんでした。') + ' tours-cards.json もダウンロードされているので、アプリの「JSONファイルを選ぶ」で読み込めます。(この表示はクリックで閉じます)');
+})();
+</script>
+<script>
+(() => {
+'use strict';
+
+/* ---------- 定数 ---------- */
+const SAMPLE = [{"id": "0754", "name": "菊地 真", "genre": "c", "yoko": false}, {"id": "0755", "name": "島村 卯月", "genre": "c", "yoko": false}, {"id": "0756", "name": "最上 静香", "genre": "c", "yoko": false}, {"id": "0757", "name": "八宮 めぐる", "genre": "c", "yoko": false}, {"id": "0758", "name": "花海 咲季", "genre": "c", "yoko": false}, {"id": "0759", "name": "桜庭 薫", "genre": "b", "yoko": false}, {"id": "0760", "name": "萩原 雪歩", "genre": "d", "yoko": false}, {"id": "0761", "name": "天海 春香", "genre": "c", "yoko": false}, {"id": "0762", "name": "桜庭 薫", "genre": "d", "yoko": false}, {"id": "0763", "name": "渋谷 凛", "genre": "c", "yoko": false}, {"id": "0764", "name": "柏木 翼", "genre": "b", "yoko": false}, {"id": "0765", "name": "周防 桃子", "genre": "", "yoko": true}, {"id": "0766", "name": "神崎 蘭子", "genre": "", "yoko": false}, {"id": "0767", "name": "藤田 ことね", "genre": "", "yoko": false}, {"id": "0768", "name": "周防 桃子", "genre": "", "yoko": false}, {"id": "0769", "name": "周防 桃子", "genre": "", "yoko": false}, {"id": "0770", "name": "水瀬 伊織", "genre": "", "yoko": false}, {"id": "0771", "name": "星井 美希", "genre": "", "yoko": false}, {"id": "0772", "name": "春日 未来", "genre": "", "yoko": false}, {"id": "0773", "name": "天海 春香", "genre": "", "yoko": false}, {"id": "0774", "name": "周防 桃子", "genre": "", "yoko": false}, {"id": "0775", "name": "天海 春香", "genre": "c", "yoko": false}, {"id": "0776", "name": "渋谷 凛", "genre": "b", "yoko": false}, {"id": "0777", "name": "伊吹 翼", "genre": "d", "yoko": false}, {"id": "0778", "name": "硲 道夫", "genre": "b", "yoko": false}, {"id": "0779", "name": "風野 灯織", "genre": "d", "yoko": false}, {"id": "0780", "name": "月村 手毬", "genre": "b", "yoko": false}, {"id": "0781", "name": "周防 桃子", "genre": "b", "yoko": false}, {"id": "0782", "name": "花海 咲季", "genre": "", "yoko": false}, {"id": "0783", "name": "月村 手毬", "genre": "", "yoko": false}, {"id": "0784", "name": "藤田 ことね", "genre": "", "yoko": false}, {"id": "0785", "name": "花海 咲季", "genre": "", "yoko": true}, {"id": "0786", "name": "花海 咲季", "genre": "a", "yoko": false}, {"id": "0787", "name": "月村 手毬", "genre": "a", "yoko": false}, {"id": "0788", "name": "藤田 ことね", "genre": "a", "yoko": false}, {"id": "0742", "name": "萩原 雪歩", "genre": "a", "yoko": false}, {"id": "0743", "name": "島村 卯月", "genre": "a", "yoko": false}, {"id": "0744", "name": "周防 桃子", "genre": "", "yoko": false}, {"id": "0745", "name": "硲 道夫", "genre": "c", "yoko": false}, {"id": "0746", "name": "小宮 果穂", "genre": "a", "yoko": false}];
+const IDOL_GROUPS = [{"label": "アイドルマスター", "idols": ["天海 春香", "如月 千早", "星井 美希", "水瀬 伊織", "萩原 雪歩", "菊地 真"]}, {"label": "アイドルマスター シンデレラガールズ", "idols": ["島村 卯月", "渋谷 凛", "本田 未央", "神崎 蘭子"]}, {"label": "アイドルマスター ミリオンライブ！", "idols": ["春日 未来", "最上 静香", "伊吹 翼", "真壁 瑞希", "周防 桃子"]}, {"label": "アイドルマスター SideM", "idols": ["天道 輝", "桜庭 薫", "柏木 翼", "硲 道夫"]}, {"label": "アイドルマスター シャイニーカラーズ", "idols": ["櫻木 真乃", "風野 灯織", "八宮 めぐる", "小宮 果穂"]}, {"label": "学園アイドルマスター", "idols": ["花海 咲季", "月村 手毬", "藤田 ことね", "紫雲 清夏"]}, {"label": "アイドルマスター TOURS", "idols": ["袖屋 璃空"]}];
+const PER_PAGE = 40;
+const GENRES = { a: 'スウィート', b: 'スマート', c: 'エナジー', d: 'ワンダー' };
+const DEF_LABELS = {
+  series: { s1: 'S1弾', '1': '第1弾', '2': '第2弾', '3': '第3弾', '4': '第4弾', '5': '第5弾', pm: 'プロモーション', cp: 'キャンペーン', ex: 'エクストラ', '1test': '1stロケテスト', '2test': '2ndロケテスト' },
+  rarity: { '9': 'UR', '1': 'SSR', '2': 'SR', '3': 'R', '4': 'N', '6': 'CO', '7': 'TSSR', '8': 'TSR', '5': 'TR' },
+  type: { a: '衣装', b: 'アクセサリー', c: 'サポート', d: 'SPアピール', e: '演出セット' },
+};
+const ORDER = {
+  series: ['s1', '1', '2', '3', '4', '5', 'pm', 'cp', 'ex', '1test', '2test'],
+  rarity: ['9', '1', '2', '3', '4', '6', '7', '8', '5'],
+  type: ['a', 'b', 'c', 'd', 'e'],
+};
+const KEY = { master: 'imt.master.v1', owned: 'imt.owned.v1', ui: 'imt.ui.v1' };
+
+/* ---------- 小物 ---------- */
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const nameKey = (s) => String(s || '').replace(/[\s　]+/g, '');
+const safeUrl = (u) => (/^(https?:|data:image\/)/i.test(u || '') ? u : '');
+const fmtPct = (a, b) => (b ? (a / b * 100).toFixed(1) : '0.0') + '%';
+
+let storageOK = true;
+function load(k, fallback) {
+  try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fallback; }
+  catch (e) { storageOK = false; return fallback; }
+}
+function save(k, v) {
+  try { localStorage.setItem(k, JSON.stringify(v)); return true; }
+  catch (e) { storageOK = false; $('#noteStorage').hidden = false; return false; }
+}
+
+let toastTimer = 0;
+function toast(msg) {
+  const t = $('#toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
+}
+async function copyText(text, fallbackEl) {
+  try { await navigator.clipboard.writeText(text); return true; } catch (e) { /* fall through */ }
+  if (fallbackEl) {
+    try { fallbackEl.focus(); fallbackEl.select(); if (document.execCommand('copy')) return true; } catch (e) { /* 手動コピー */ }
+  }
+  return false;
+}
+function openDlg(d) { if (typeof d.showModal === 'function') { if (!d.open) d.showModal(); } else d.setAttribute('open', ''); }
+function closeDlg(d) { if (typeof d.close === 'function') d.close(); else d.removeAttribute('open'); }
+
+/* ---------- コード(同期) ---------- */
+const toB64u = (u8) => {
+  let s = '';
+  for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+  return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+};
+const fromB64u = (s) => {
+  s = s.replace(/-/g, '+').replace(/_/g, '/');
+  while (s.length % 4) s += '=';
+  const bin = atob(s), u8 = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+  return u8;
+};
+async function pack(str) {
+  const raw = new TextEncoder().encode(str);
+  if (typeof CompressionStream === 'function') {
+    try {
+      const cs = new CompressionStream('gzip');
+      const w = cs.writable.getWriter(); w.write(raw); w.close();
+      return 'z' + toB64u(new Uint8Array(await new Response(cs.readable).arrayBuffer()));
+    } catch (e) { /* 圧縮なしへ */ }
+  }
+  return 'p' + toB64u(raw);
+}
+async function unpack(s) {
+  const kind = s[0], u8 = fromB64u(s.slice(1));
+  if (kind === 'p') return new TextDecoder().decode(u8);
+  if (typeof DecompressionStream !== 'function') throw new Error('このブラウザは圧縮コードの読み込みに対応していません。新しいブラウザで開いてください。');
+  const ds = new DecompressionStream('gzip');
+  const w = ds.writable.getWriter(); w.write(u8); w.close();
+  return new TextDecoder().decode(await new Response(ds.readable).arrayBuffer());
+}
+
+/* ---------- データ ---------- */
+function norm(c) {
+  c = c || {};
+  return {
+    id: String(c.id == null ? '' : c.id).trim(),
+    name: String(c.name || '').trim(),
+    img: safeUrl(c.img), back: safeUrl(c.back),
+    yoko: !!c.yoko,
+    genre: GENRES[c.genre] ? c.genre : '',
+    series: c.series ? String(c.series) : '',
+    rarity: c.rarity ? String(c.rarity) : '',
+    type: c.type ? String(c.type) : '',
+  };
+}
+function sampleMaster() { return { sample: true, scraped: '', labels: {}, cards: SAMPLE.map(norm) }; }
+function loadMaster() {
+  const m = load(KEY.master, null);
+  if (m && Array.isArray(m.cards) && m.cards.length) return { sample: false, scraped: m.scraped || '', labels: m.labels || {}, cards: m.cards.map(norm) };
+  return sampleMaster();
+}
+function parseMasterJSON(text) {
+  let o;
+  try { o = JSON.parse(text); } catch (e) { throw new Error('JSONとして読み取れませんでした。取込スクリプトがコピーした内容を、そのまま貼り付けてください。'); }
+  const arr = Array.isArray(o) ? o : o && o.cards;
+  if (!Array.isArray(arr) || !arr.length) throw new Error('カードが1枚も見つかりませんでした。');
+  const seen = new Set(), cards = [];
+  arr.map(norm).forEach((c) => { if (c.id && !seen.has(c.id)) { seen.add(c.id); cards.push(c); } });
+  if (!cards.length) throw new Error('カードの番号(id)が読み取れませんでした。');
+  return { sample: false, scraped: (o && o.scraped) || '', labels: (o && o.labels) || {}, cards };
+}
+
+let master = loadMaster();
+let owned = new Set((load(KEY.owned, []) || []).map(String));
+const ui = Object.assign({ status: 'all', series: 'all', q: '', rarity: [], type: [], genre: [], idol: [], tab: 'rarity', brand: 0, sort: 'official', page: 1 }, load(KEY.ui, {}));
+let view = [];
+let has = {};
+
+function labels() {
+  const L = master.labels || {};
+  return {
+    series: Object.assign({}, DEF_LABELS.series, L.series),
+    rarity: Object.assign({}, DEF_LABELS.rarity, L.rarity),
+    type: Object.assign({}, DEF_LABELS.type, L.type),
+  };
+}
+function orderedKeys(kind) {
+  const present = new Set(master.cards.map((c) => c[kind]).filter(Boolean));
+  const L = labels()[kind];
+  const base = ORDER[kind].filter((k) => present.has(k) || kind === 'series' && has.series);
+  const extra = Array.from(present).filter((k) => !ORDER[kind].includes(k));
+  return base.concat(extra).filter((k) => L[k] || present.has(k));
+}
+function idolGroups() {
+  const known = new Set();
+  IDOL_GROUPS.forEach((g) => g.idols.forEach((n) => known.add(nameKey(n))));
+  const extra = [], seen = new Set();
+  master.cards.forEach((c) => {
+    const k = nameKey(c.name);
+    if (c.name && !known.has(k) && !seen.has(k)) { seen.add(k); extra.push(c.name); }
+  });
+  const groups = IDOL_GROUPS.map((g) => ({ label: g.label.replace(/^アイドルマスター\s*/, '') || 'アイドルマスター', idols: g.idols }));
+  if (groups[0] && IDOL_GROUPS[0].label === 'アイドルマスター') groups[0].label = 'アイドルマスター';
+  if (extra.length) groups.push({ label: 'その他', idols: extra });
+  return groups;
+}
+
+/* ---------- 絞り込み ---------- */
+function baseMatch(c) {
+  if (ui.series !== 'all' && c.series !== ui.series) return false;
+  if (ui.rarity.length && !ui.rarity.includes(c.rarity)) return false;
+  if (ui.type.length && !ui.type.includes(c.type)) return false;
+  if (ui.genre.length && !ui.genre.includes(c.genre)) return false;
+  if (ui.idol.length && !ui.idol.includes(nameKey(c.name))) return false;
+  if (ui.q) {
+    const q = nameKey(ui.q).toLowerCase();
+    if (!(nameKey(c.name) + c.id).toLowerCase().includes(q)) return false;
+  }
+  return true;
+}
+function computeView() {
+  const base = master.cards.filter(baseMatch);
+  let list = base;
+  if (ui.status === 'own') list = base.filter((c) => owned.has(c.id));
+  if (ui.status === 'miss') list = base.filter((c) => !owned.has(c.id));
+  if (ui.sort !== 'official') {
+    const dir = ui.sort === 'asc' ? 1 : -1;
+    list = list.slice().sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0) * dir);
+  }
+  view = list;
+  const pages = Math.max(1, Math.ceil(view.length / PER_PAGE));
+  if (ui.page > pages) ui.page = pages;
+  if (ui.page < 1) ui.page = 1;
+  return base;
+}
+const filtersActive = () => ui.status !== 'all' || ui.series !== 'all' || ui.q || ui.rarity.length || ui.type.length || ui.genre.length || ui.idol.length;
+const saveUI = () => save(KEY.ui, ui);
+
+/* ---------- 描画 ---------- */
+function renderMeter() {
+  const total = master.cards.length;
+  let n = 0;
+  master.cards.forEach((c) => { if (owned.has(c.id)) n++; });
+  $('#ownedN').textContent = n;
+  $('#totalN').textContent = total;
+  $('#pct').textContent = fmtPct(n, total);
+  $('#barFill').style.width = (total ? n / total * 100 : 0) + '%';
+  $('#barBox').setAttribute('aria-valuenow', total ? Math.round(n / total * 100) : 0);
+}
+function renderStatus(base) {
+  let o = 0;
+  base.forEach((c) => { if (owned.has(c.id)) o++; });
+  $('#cAll').textContent = base.length;
+  $('#cOwn').textContent = o;
+  $('#cMiss').textContent = base.length - o;
+  $$('#seg button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.status === ui.status)));
+}
+function renderResult() {
+  let o = 0;
+  view.forEach((c) => { if (owned.has(c.id)) o++; });
+  const tail = view.length ? ` 所持 ${o} / 未所持 ${view.length - o}` : '';
+  $('#resultText').innerHTML = `<b>${view.length}</b>枚${filtersActive() ? '(絞り込み中)' : ''}<span style="color:var(--muted)">${esc(tail)}</span>`;
+  $('#bulkOn').disabled = !view.length;
+  $('#bulkOff').disabled = !view.length;
+}
+function chip(group, value, label, checked, extra) {
+  return `<label class="chip"${extra || ''}><input type="checkbox" data-group="${group}" value="${esc(value)}"${checked ? ' checked' : ''}><span>${label}</span></label>`;
+}
+function renderFilters() {
+  const L = labels();
+  has = { series: master.cards.some((c) => c.series), rarity: master.cards.some((c) => c.rarity), type: master.cards.some((c) => c.type) };
+  // シリーズ
+  const sel = $('#seriesSel');
+  const sKeys = has.series ? orderedKeys('series') : [];
+  if (ui.series !== 'all' && !sKeys.includes(ui.series)) ui.series = 'all';
+  sel.innerHTML = '<option value="all">シリーズ: すべて</option>' + sKeys.map((k) => `<option value="${esc(k)}">${esc(L.series[k] || k)}</option>`).join('');
+  sel.value = ui.series;
+  sel.disabled = !has.series;
+  sel.title = has.series ? '' : '取り込んだデータにシリーズの情報がありません';
+  // タブ
+  const counts = { rarity: ui.rarity.length, type: ui.type.length, genre: ui.genre.length, idol: ui.idol.length };
+  if ((ui.tab === 'rarity' && !has.rarity) || (ui.tab === 'type' && !has.type)) ui.tab = 'genre';
+  $$('#tabs button').forEach((b) => {
+    const t = b.dataset.tab, off = (t === 'rarity' && !has.rarity) || (t === 'type' && !has.type);
+    const base = { rarity: 'レアリティ', type: '種類', genre: 'ジャンル', idol: 'アイドル' }[t];
+    b.innerHTML = esc(base) + (counts[t] ? `<span class="count">${counts[t]}</span>` : '');
+    b.disabled = off;
+    b.title = off ? '取り込んだデータにこの情報がありません' : '';
+    b.setAttribute('aria-selected', String(ui.tab === t));
+  });
+  // パネル
+  const p = $('#panel');
+  if (ui.tab === 'rarity') {
+    p.innerHTML = '<div class="chips">' + orderedKeys('rarity').map((k) => chip('rarity', k, esc(L.rarity[k] || k), ui.rarity.includes(k))).join('') + '</div>';
+  } else if (ui.tab === 'type') {
+    p.innerHTML = '<div class="chips">' + orderedKeys('type').map((k) => chip('type', k, esc(L.type[k] || k), ui.type.includes(k))).join('') + '</div>';
+  } else if (ui.tab === 'genre') {
+    p.innerHTML = '<div class="chips">' + Object.keys(GENRES).map((k) => chip('genre', k, `<i class="gdot"></i>${esc(GENRES[k])}`, ui.genre.includes(k), ` data-g="${k}"`)).join('') + '</div>';
+  } else {
+    const groups = idolGroups();
+    if (ui.brand >= groups.length) ui.brand = 0;
+    const brandBtns = groups.map((g, i) => {
+      const n = g.idols.filter((x) => ui.idol.includes(nameKey(x))).length;
+      return `<button type="button" data-brand="${i}" aria-pressed="${i === ui.brand}">${esc(g.label)}${n ? ` (${n})` : ''}</button>`;
+    }).join('');
+    const g = groups[ui.brand];
+    p.innerHTML = `<div class="brands">${brandBtns}</div><div class="chips">` + g.idols.map((n) => chip('idol', nameKey(n), esc(n), ui.idol.includes(nameKey(n)))).join('') + '</div>';
+  }
+  $('#q').value = ui.q;
+  $('#sortSel').value = ui.sort;
+}
+function tileHTML(c) {
+  const on = owned.has(c.id);
+  const media = c.img ? `<img src="${esc(c.img)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">` : '';
+  return `<li class="tile${on ? ' is-owned' : ''}" data-id="${esc(c.id)}"${c.genre ? ` data-genre="${c.genre}"` : ''}>
+<button type="button" class="thumb" data-act="open" aria-label="${esc(c.name)}(${esc(c.id)})の詳細"><span class="ph"><b>${esc(c.id)}</b><span>${esc(c.name)}</span></span>${media}</button>
+<label class="own"><input type="checkbox" data-act="toggle"${on ? ' checked' : ''} aria-label="${esc(c.name)} ${esc(c.id)} を所持している"><span class="box" aria-hidden="true"></span></label>
+<p class="cap"><span class="cid">${esc(c.id)}</span><span class="nm">${esc(c.name)}</span></p></li>`;
+}
+function renderGrid() {
+  const start = (ui.page - 1) * PER_PAGE;
+  const slice = view.slice(start, start + PER_PAGE);
+  $('#grid').innerHTML = slice.length ? slice.map(tileHTML).join('') : '<li class="empty">条件に合うカードがありません。</li>';
+  renderPager();
+}
+function renderPager() {
+  const pages = Math.max(1, Math.ceil(view.length / PER_PAGE));
+  const box = $('#pager');
+  if (pages <= 1) { box.innerHTML = ''; return; }
+  const cur = ui.page, nums = new Set([1, pages, cur - 1, cur, cur + 1].filter((n) => n >= 1 && n <= pages));
+  const sorted = Array.from(nums).sort((a, b) => a - b);
+  let h = `<button type="button" data-page="${cur - 1}"${cur === 1 ? ' disabled' : ''}>前へ</button>`;
+  let prev = 0;
+  sorted.forEach((n) => {
+    if (n - prev > 1) h += '<span class="dots">…</span>';
+    h += `<button type="button" data-page="${n}"${n === cur ? ' aria-current="page"' : ''}>${n}</button>`;
+    prev = n;
+  });
+  h += `<button type="button" data-page="${cur + 1}"${cur === pages ? ' disabled' : ''}>次へ</button>`;
+  box.innerHTML = h;
+}
+function refresh(opts) {
+  const base = computeView();
+  $('#noteSample').hidden = !master.sample;
+  if (!opts || !opts.keepFilters) renderFilters();
+  renderMeter(); renderStatus(base); renderResult(); renderGrid();
+}
+function refreshStats() {
+  const base = master.cards.filter(baseMatch);
+  renderMeter(); renderStatus(base); renderResult();
+}
+
+/* ---------- 所持の更新 ---------- */
+function persistOwned() { save(KEY.owned, Array.from(owned).sort()); }
+function setOwned(id, on) {
+  if (on) owned.add(id); else owned.delete(id);
+  persistOwned();
+  if (ui.status !== 'all') { computeView(); renderStatus(master.cards.filter(baseMatch)); renderMeter(); renderResult(); renderGrid(); return; }
+  const li = $(`.tile[data-id="${CSS.escape(id)}"]`);
+  if (li) { li.classList.toggle('is-owned', on); const cb = $('input[data-act="toggle"]', li); if (cb) cb.checked = on; }
+  refreshStats();
+}
+
+/* ---------- 詳細ダイアログ ---------- */
+let dlgId = null;
+function figure(url, name, yoko) {
+  return url ? `<img src="${esc(url)}" alt="${esc(name)}" referrerpolicy="no-referrer" onerror="this.replaceWith(document.createTextNode('画像を読み込めません'))">` : '画像なし';
+}
+function openCard(id) {
+  const c = master.cards.find((x) => x.id === id);
+  if (!c) return;
+  dlgId = id;
+  const L = labels();
+  $('#cardTitle').innerHTML = `<small>${esc(c.id)}</small>${esc(c.name || '(名前なし)')}`;
+  $('#figFront').innerHTML = figure(c.img, c.name + ' 表面');
+  $('#figBack').innerHTML = figure(c.back, c.name + ' 裏面');
+  const tags = [];
+  if (c.genre) tags.push(`<span class="tag" data-g="${c.genre}"><i class="gdot"></i>${esc(GENRES[c.genre])}</span>`);
+  if (c.rarity) tags.push(`<span class="tag">${esc(L.rarity[c.rarity] || c.rarity)}</span>`);
+  if (c.type) tags.push(`<span class="tag">${esc(L.type[c.type] || c.type)}</span>`);
+  if (c.series) tags.push(`<span class="tag">${esc(L.series[c.series] || c.series)}</span>`);
+  $('#cardMeta').innerHTML = tags.join('');
+  $('#dlgOwn').checked = owned.has(id);
+  const i = view.findIndex((x) => x.id === id);
+  $('#dlgPrev').disabled = i <= 0;
+  $('#dlgNext').disabled = i < 0 || i >= view.length - 1;
+  openDlg($('#dlgCard'));
+}
+
+/* ---------- イベント ---------- */
+function bind() {
+  const grid = $('#grid');
+  grid.addEventListener('load', (e) => { if (e.target.tagName === 'IMG') e.target.closest('.thumb').classList.add('loaded'); }, true);
+  grid.addEventListener('error', (e) => { if (e.target.tagName === 'IMG') e.target.remove(); }, true);
+  grid.addEventListener('change', (e) => {
+    if (e.target.dataset.act === 'toggle') setOwned(e.target.closest('.tile').dataset.id, e.target.checked);
+  });
+  grid.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-act="open"]');
+    if (b) openCard(b.closest('.tile').dataset.id);
+  });
+
+  $('#seg').addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    ui.status = b.dataset.status; ui.page = 1; saveUI(); refresh({ keepFilters: true });
+  });
+  $('#seriesSel').addEventListener('change', (e) => { ui.series = e.target.value; ui.page = 1; saveUI(); refresh({ keepFilters: true }); });
+  let qTimer = 0;
+  $('#q').addEventListener('input', (e) => {
+    clearTimeout(qTimer);
+    qTimer = setTimeout(() => { ui.q = e.target.value.trim(); ui.page = 1; saveUI(); refresh({ keepFilters: true }); }, 180);
+  });
+  $('#sortSel').addEventListener('change', (e) => { ui.sort = e.target.value; ui.page = 1; saveUI(); refresh({ keepFilters: true }); });
+  $('#tabs').addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b || b.disabled) return;
+    ui.tab = b.dataset.tab; saveUI(); renderFilters();
+  });
+  $('#panel').addEventListener('change', (e) => {
+    const g = e.target.dataset.group; if (!g) return;
+    const arr = ui[g], v = e.target.value, i = arr.indexOf(v);
+    if (e.target.checked && i < 0) arr.push(v);
+    if (!e.target.checked && i >= 0) arr.splice(i, 1);
+    ui.page = 1; saveUI(); refresh({ keepFilters: true });
+    // タブの件数バッジだけ更新
+    const counts = { rarity: ui.rarity.length, type: ui.type.length, genre: ui.genre.length, idol: ui.idol.length };
+    $$('#tabs button').forEach((b) => {
+      const t = b.dataset.tab, base = { rarity: 'レアリティ', type: '種類', genre: 'ジャンル', idol: 'アイドル' }[t];
+      b.innerHTML = esc(base) + (counts[t] ? `<span class="count">${counts[t]}</span>` : '');
+    });
+    if (g === 'idol') {
+      const groups = idolGroups();
+      $$('#panel .brands button').forEach((b, i2) => {
+        const n = groups[i2].idols.filter((x) => ui.idol.includes(nameKey(x))).length;
+        b.textContent = groups[i2].label + (n ? ` (${n})` : '');
+      });
+    }
+  });
+  $('#panel').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-brand]'); if (!b) return;
+    ui.brand = Number(b.dataset.brand); saveUI(); renderFilters();
+  });
+  $('#btnReset').addEventListener('click', () => {
+    Object.assign(ui, { status: 'all', series: 'all', q: '', rarity: [], type: [], genre: [], idol: [], page: 1 });
+    saveUI(); refresh();
+  });
+  $('#pager').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-page]'); if (!b || b.disabled) return;
+    ui.page = Number(b.dataset.page); saveUI(); renderGrid();
+    window.scrollTo({ top: $('#grid').offsetTop - 160, behavior: 'auto' });
+  });
+
+  // 一括操作(2回押して確定)
+  [['#bulkOn', true], ['#bulkOff', false]].forEach(([sel, on]) => {
+    const btn = $(sel), orig = btn.textContent;
+    let armed = false, timer = 0;
+    const reset = () => { armed = false; btn.textContent = orig; btn.classList.remove('danger'); };
+    btn.addEventListener('click', () => {
+      if (!armed) {
+        armed = true; btn.textContent = `${view.length}枚を変更する(もう一度押して確定)`; btn.classList.add('danger');
+        clearTimeout(timer); timer = setTimeout(reset, 4000); return;
+      }
+      clearTimeout(timer); reset();
+      view.forEach((c) => { if (on) owned.add(c.id); else owned.delete(c.id); });
+      persistOwned(); refresh({ keepFilters: true });
+      toast(`${view.length}枚を${on ? '所持にしました' : '未所持にしました'}`);
+    });
+  });
+
+  // ダイアログ共通
+  $$('dialog').forEach((d) => {
+    d.addEventListener('click', (e) => { if (e.target === d) closeDlg(d); });
+    $$('[data-close]', d).forEach((b) => b.addEventListener('click', () => closeDlg(d)));
+  });
+  $('#dlgOwn').addEventListener('change', (e) => { if (dlgId) setOwned(dlgId, e.target.checked); });
+  const step = (d) => {
+    const i = view.findIndex((x) => x.id === dlgId), n = view[i + d];
+    if (n) { const pageOfN = Math.floor((i + d) / PER_PAGE) + 1; if (pageOfN !== ui.page) { ui.page = pageOfN; renderGrid(); } openCard(n.id); }
+  };
+  $('#dlgPrev').addEventListener('click', () => step(-1));
+  $('#dlgNext').addEventListener('click', () => step(1));
+
+  bindSync(); bindData();
+  window.addEventListener('storage', (e) => {
+    if (e.key === KEY.owned) { owned = new Set((load(KEY.owned, []) || []).map(String)); refresh({ keepFilters: true }); }
+    if (e.key === KEY.master) { master = loadMaster(); refresh(); }
+  });
+}
+
+/* ---------- 同期ダイアログ ---------- */
+let pendingIn = null;
+function showIn(kind, text) {
+  const m = $('#inMsg');
+  m.hidden = !text; m.className = 'msg' + (kind ? ' ' + kind : ''); m.textContent = text || '';
+}
+function bindSync() {
+  $('#btnSync').addEventListener('click', () => {
+    $('#outBox').hidden = true; showIn('', ''); $('#applyRow').hidden = true; pendingIn = null;
+    $('#mkData').disabled = master.sample;
+    $('#mkData').title = master.sample ? '先にカードデータを取り込んでください' : '';
+    openDlg($('#dlgSync'));
+  });
+  const out = async (code, info) => {
+    $('#outBox').hidden = false; $('#outCode').value = code; $('#outInfo').textContent = info;
+    $('#outCode').focus(); $('#outCode').select();
+  };
+  $('#mkOwned').addEventListener('click', async () => {
+    const ids = Array.from(owned).sort();
+    const code = 'IMT1.O.' + await pack(ids.join(','));
+    out(code, `所持 ${ids.length} 枚 / ${code.length} 文字`);
+  });
+  $('#mkData').addEventListener('click', async () => {
+    const payload = {
+      o: Array.from(owned).sort(), l: master.labels || {}, t: master.scraped || '',
+      c: master.cards.map((c) => [c.id, c.name, c.img, c.back, c.yoko ? 1 : 0, c.genre, c.series, c.rarity, c.type]),
+    };
+    const code = 'IMT1.D.' + await pack(JSON.stringify(payload));
+    out(code, `カード ${master.cards.length} 枚・所持 ${owned.size} 枚 / ${code.length} 文字`);
+  });
+  $('#copyOut').addEventListener('click', async () => {
+    toast((await copyText($('#outCode').value, $('#outCode'))) ? 'コピーしました' : '選択しました。手動でコピーしてください');
+  });
+  $('#checkIn').addEventListener('click', async () => {
+    pendingIn = null; $('#applyRow').hidden = true; showIn('', '');
+    const t = $('#inCode').value.replace(/\s+/g, '');
+    const m = /^IMT1\.([OD])\.([zp][A-Za-z0-9_-]+)$/.exec(t);
+    if (!m) { showIn('err', 'コードの形式が違います。IMT1. から始まるコードを、途中で切れないように貼り付けてください。'); return; }
+    try {
+      const text = await unpack(m[2]);
+      let rec;
+      if (m[1] === 'O') rec = { kind: 'O', ids: text ? text.split(',').filter(Boolean) : [] };
+      else {
+        const o = JSON.parse(text);
+        const cards = (o.c || []).map((a) => norm({ id: a[0], name: a[1], img: a[2], back: a[3], yoko: a[4], genre: a[5], series: a[6], rarity: a[7], type: a[8] })).filter((c) => c.id);
+        rec = { kind: 'D', ids: (o.o || []).map(String), labels: o.l || {}, scraped: o.t || '', cards };
+      }
+      const mode = $('input[name="mode"]:checked').value;
+      const incoming = new Set(rec.ids);
+      const added = rec.ids.filter((id) => !owned.has(id)).length;
+      let lost = 0; owned.forEach((id) => { if (!incoming.has(id)) lost++; });
+      const after = mode === 'merge' ? owned.size + added : incoming.size;
+      let s = `コードの所持は ${incoming.size} 枚。` + (mode === 'merge' ? `新しく ${added} 枚が加わり、合計 ${after} 枚になります。` : `置き換えると ${owned.size} 枚 → ${after} 枚になります(${lost} 枚が外れます)。`);
+      if (rec.kind === 'D') s += ` カード一覧 ${rec.cards.length} 枚も入れ替わります。`;
+      pendingIn = { rec, mode };
+      showIn('', s); $('#applyRow').hidden = false;
+    } catch (e) {
+      showIn('err', 'コードを読み取れませんでした。' + (e && e.message ? e.message : '') + ' 一部が欠けていないか確認してください。');
+    }
+  });
+  $('#applyIn').addEventListener('click', () => {
+    if (!pendingIn) return;
+    const { rec, mode } = pendingIn;
+    if (rec.kind === 'D' && rec.cards.length) {
+      master = { sample: false, scraped: rec.scraped, labels: rec.labels, cards: rec.cards };
+      save(KEY.master, { scraped: master.scraped, labels: master.labels, cards: master.cards });
+    }
+    owned = mode === 'merge' ? new Set([...owned, ...rec.ids]) : new Set(rec.ids);
+    persistOwned(); pendingIn = null;
+    $('#applyRow').hidden = true; $('#inCode').value = '';
+    showIn('ok', `読み込みました。所持は ${owned.size} 枚です。`);
+    refresh(); toast('同期しました');
+  });
+}
+
+/* ---------- カードデータ取込 ---------- */
+function dataState() {
+  const el = $('#dataState');
+  if (master.sample) el.textContent = `いまのデータ: サンプル(${master.cards.length}枚・画像なし)`;
+  else {
+    const d = master.scraped ? new Date(master.scraped) : null;
+    const when = d && !isNaN(d) ? `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} に取得` : '';
+    el.textContent = `いまのデータ: ${master.cards.length}枚 ${when}`.trim();
+  }
+}
+function showData(kind, text) { const m = $('#dataMsg'); m.hidden = !text; m.className = 'msg' + (kind ? ' ' + kind : ''); m.textContent = text || ''; }
+function importText(text) {
+  try {
+    const m = parseMasterJSON(text);
+    master = m;
+    if (!save(KEY.master, { scraped: m.scraped, labels: m.labels, cards: m.cards })) { showData('err', '取り込めましたが、このブラウザでは保存できませんでした。ページを閉じると消えます。'); }
+    else showData('ok', `${m.cards.length}枚を取り込みました。`);
+    dataState(); ui.page = 1; refresh();
+    toast(`${m.cards.length}枚を取り込みました`);
+    $('#dataIn').value = '';
+  } catch (e) { showData('err', e.message); }
+}
+function bindData() {
+  const src = $('#extractSrc').textContent;
+  $('#scriptView').value = src;
+  const open = () => { dataState(); showData('', ''); openDlg($('#dlgData')); };
+  $('#btnData').addEventListener('click', open);
+  $('#noteImport').addEventListener('click', open);
+  // ブックマークレット: 改行はエンコードして残す(行コメントがあっても壊れない)
+  const bm = $('#bmLink');
+  bm.href = 'javascript:' + encodeURIComponent(src);
+  bm.addEventListener('click', (e) => { e.preventDefault(); toast('クリックではなく、ブックマークバーへドラッグして登録してください'); });
+  $('#copyScript').addEventListener('click', async () => {
+    toast((await copyText(src, $('#scriptView'))) ? '取込スクリプトをコピーしました' : '下の欄を開いて、手動でコピーしてください');
+  });
+  $('#doImport').addEventListener('click', () => {
+    const t = $('#dataIn').value.trim();
+    if (!t) { showData('err', '貼り付け欄が空です。'); return; }
+    importText(t);
+  });
+  $('#dataFile').addEventListener('change', (e) => {
+    const f = e.target.files && e.target.files[0]; if (!f) return;
+    const r = new FileReader();
+    r.onload = () => importText(String(r.result || ''));
+    r.onerror = () => showData('err', 'ファイルを読み込めませんでした。');
+    r.readAsText(f); e.target.value = '';
+  });
+}
+
+/* ---------- 起動 ---------- */
+if (!storageOK) $('#noteStorage').hidden = false;
+bind();
+refresh();
+window.__imt = { get owned() { return owned; }, get master() { return master; }, get view() { return view; } };
+})();
+</script>
+</body>
+</html>
